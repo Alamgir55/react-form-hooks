@@ -1,9 +1,10 @@
-import React, { useReducer, useState, useEffect, useCallback } from 'react';
+import React, { useReducer, useEffect, useCallback, useMemo } from 'react';
 
 import IngredientForm from './IngredientForm';
 import IngredientList from './IngredientList';
 import Search from './Search';
 import ErrorModal from '../UI/ErrorModal';
+import useHttp from '../../hooks/http';
 
 const ingredientReducer = (currentIngredient, action) => {
     switch(action.type){
@@ -18,55 +19,51 @@ const ingredientReducer = (currentIngredient, action) => {
     }
 }
 
+
+
 const Ingredients = () => {
   const [userIngredients, dispatch] = useReducer(ingredientReducer, []);
-  const [isLoading, setLoading] = useState(false);
-  const [error, setError] = useState();
-
+  const { isLoading, data, error, sendRequest, reqExtra, reqIdentifer } = useHttp();
 
   const filteredIngredientsHandler = useCallback( filterIngredients => {
     dispatch({type: 'SET', ingredients: filterIngredients})
   }, [])
 
   useEffect(() => {
-    console.log('REDNDERING INGREDIENTS', userIngredients);
-  }, [userIngredients]);
-
-  const addIngredientsHandler = Ingredient => {
-    setLoading(true);
-    fetch('https://react-hooks-9ae76.firebaseio.com/ingredients.json', {
-      method: 'POST',
-      body: JSON.stringify(Ingredient),
-      headers: { 'Content-Type': 'application/json' }
-    }).then(response => {
-      setLoading(false);
-      return response.json();
-    }).then(responseData => {
+    if(!isLoading && !error && reqIdentifer === 'REMOVE_INGREDIENT'){
+      dispatch({type: 'DELETE', id: reqExtra})
+    } else if(!isLoading && !error && reqIdentifer === 'ADD_INGREDIENT') {
       dispatch({
         type: 'ADD',
-        ingredient: {id: responseData.name, ...Ingredient}
-      })
-    })
-  } 
-  const removeIngredientsHandler = IngredientId => {
-    setLoading(true);
-    fetch(`https://react-hooks-9ae76.firebaseio.com/ingredients/${IngredientId}.json`, {
-      method: 'DELETE'
-    }).then(response => {
-      setLoading(false);
-      dispatch({
-        type: 'DELETE',
-        id: IngredientId
-      })
-    }).catch(error => {
-      setError('Something went wrong!');
-      setLoading(false);
-    })
-  }
+        ingredient: { id: data.name, ...reqExtra }
+        })
+    }
+  }, [data, reqExtra, reqIdentifer, isLoading, error]);
 
-  const clearError = () => {
-    setError(null);
-  }
+  useEffect(() => {
+
+  }, [userIngredients])
+
+  const addIngredientsHandler = useCallback( Ingredient => {
+    sendRequest('https://react-hooks-9ae76.firebaseio.com/ingredients.json', 'POST', 
+      JSON.stringify(Ingredient),
+      Ingredient,
+      'ADD_INGREDIENT'
+    )
+  }, [sendRequest]); 
+
+  const removeIngredientsHandler = useCallback(IngredientId => {
+    sendRequest(`https://react-hooks-9ae76.firebaseio.com/ingredients/${IngredientId}.json`, 'DELETE', null, IngredientId, 'REMOVE_INGREDIENT')
+  }, [sendRequest]);
+
+
+  const ingredientList = useMemo(() => {
+    return( <IngredientList ingredients={userIngredients} onRemoveItem={removeIngredientsHandler} />)
+  }, [userIngredients, removeIngredientsHandler])
+
+  const clearError = useCallback(() => {
+    //dispatch({type: 'CLEAR'});
+  }, [])
 
   return (
     <div className="App">
@@ -75,7 +72,8 @@ const Ingredients = () => {
 
       <section>
         <Search onLoadIngredients={filteredIngredientsHandler} />
-        <IngredientList ingredients={userIngredients} onRemoveItem={removeIngredientsHandler} />
+        
+        {ingredientList}
       </section>
     </div>
   );
